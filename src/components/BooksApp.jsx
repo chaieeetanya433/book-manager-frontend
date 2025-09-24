@@ -11,7 +11,7 @@ import ConfirmModal from "./ConfirmModal";
 import debounce from "lodash.debounce";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-const API_BASE_URL = 'http://127.0.0.1:8000';
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
 const itemVariants = {
     hidden: { opacity: 0, y: 20 },
