@@ -78,16 +78,18 @@ const GoogleBooksSearch = ({ onBookAdded }) => {
         }
     };
 
-    // debounce search calls
     const debouncedSearch = debounce(doSearch, 500);
 
     return (
-        <motion.div className="bg-white rounded-xl shadow-lg p-6">
-            <h3 className="text-lg font-semibold mb-4 flex items-center">
+        <motion.div className="bg-white rounded-xl shadow-lg p-4 sm:p-6 w-full">
+            {/* Title */}
+            <h3 className="text-base sm:text-lg font-semibold mb-4 flex items-center">
                 <Search className="w-5 h-5 mr-2 text-blue-600" />
                 Google Books Search
             </h3>
-            <div className="flex space-x-2">
+
+            {/* Input + Button */}
+            <div className="flex flex-col sm:flex-row sm:space-x-2 space-y-2 sm:space-y-0">
                 <input
                     type="text"
                     value={searchQuery}
@@ -96,31 +98,32 @@ const GoogleBooksSearch = ({ onBookAdded }) => {
                         debouncedSearch(e.target.value);
                     }}
                     placeholder="Enter book title..."
-                    className="flex-1 px-3 py-2 border border-gray-300 rounded-md"
+                    className="w-full sm:flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm sm:text-base"
                 />
                 <motion.button
                     disabled={isLoading}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-md"
+                    className="w-full sm:w-auto px-4 py-2 bg-blue-600 text-white rounded-md text-sm sm:text-base flex justify-center items-center"
                 >
                     {isLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : "Search"}
                 </motion.button>
             </div>
 
+            {/* Results */}
             <AnimatePresence>
                 {result && (
                     <motion.div
                         initial={{ opacity: 0, y: 10 }}
                         animate={{ opacity: 1, y: 0 }}
                         exit={{ opacity: 0, y: -10 }}
-                        className={`p-4 rounded-md mt-4 ${result.type === "success" ? "bg-green-50" : "bg-red-50"}`}
+                        className={`p-3 sm:p-4 rounded-md mt-4 text-sm sm:text-base ${result.type === "success" ? "bg-green-50" : "bg-red-50"}`}
                     >
                         {result.type === "success" ? (
                             <>
-                                <p className="font-medium">✓ Found: {result.data.title}</p>
-                                <p>Author(s): {result.data.authors?.join(", ")}</p>
+                                <p className="font-medium break-words">✓ Found: {result.data.title}</p>
+                                <p className="break-words">Author(s): {result.data.authors?.join(", ")}</p>
                             </>
                         ) : (
-                            <p>Error: {result.message}</p>
+                            <p className="break-words">Error: {result.message}</p>
                         )}
                     </motion.div>
                 )}
@@ -141,49 +144,64 @@ export default function BooksApp() {
     const queryClient = useQueryClient();
 
     // Queries
-    const { data: books = [], isLoading: booksLoading } = useQuery(["books"], fetchBooks);
-    const { data: stats = {}, isLoading: statsLoading } = useQuery(["stats"], fetchStats);
+    // Books
+    const { data: books = [], isLoading: booksLoading } = useQuery({
+        queryKey: ["books"],
+        queryFn: fetchBooks,
+    });
+
+    // Stats
+    const { data: stats = {}, isLoading: statsLoading } = useQuery({
+        queryKey: ["stats"],
+        queryFn: fetchStats,
+    });
+
 
     // Mutations
-    const addBookMutation = useMutation(
-        (book) => fetch(`${API_BASE_URL}/api/books/`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(book),
-        }).then((res) => res.json()),
-        {
-            onSuccess: (newBook) => {
-                queryClient.setQueryData(["books"], (old = []) => [...old, newBook]);
-                queryClient.invalidateQueries(["stats"]);
-            },
-        }
-    );
+    const addBookMutation = useMutation({
+        mutationFn: (book) =>
+            fetch(`${API_BASE_URL}/api/books/`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(book),
+            }).then(res => res.json()),
+        onSuccess: (newBook) => {
+            // update books query cache
+            queryClient.setQueryData(["books"], (oldData = { results: [] }) => ({
+                ...oldData,
+                results: [...oldData.results, newBook],
+            }));
+            queryClient.invalidateQueries({ queryKey: ["stats"] });
+        },
+    });
 
-    const editBookMutation = useMutation(
-        ({ id, data }) => fetch(`${API_BASE_URL}/api/books/${id}/`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
-        }).then((res) => res.json()),
-        {
-            onSuccess: (updatedBook) => {
-                queryClient.setQueryData(["books"], (old = []) =>
-                    old.map((b) => (b.id === updatedBook.id ? updatedBook : b))
-                );
-                queryClient.invalidateQueries(["stats"]);
-            },
-        }
-    );
+    const editBookMutation = useMutation({
+        mutationFn: ({ id, data }) =>
+            fetch(`${API_BASE_URL}/api/books/${id}/`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(data),
+            }).then(res => res.json()),
+        onSuccess: (updatedBook) => {
+            queryClient.setQueryData(["books"], (oldData = { results: [] }) => ({
+                ...oldData,
+                results: oldData.results.map(b => b.id === updatedBook.id ? updatedBook : b),
+            }));
+            queryClient.invalidateQueries({ queryKey: ["stats"] });
+        },
+    });
 
-    const deleteBookMutation = useMutation(
-        (id) => fetch(`${API_BASE_URL}/api/books/${id}/`, { method: "DELETE" }),
-        {
-            onSuccess: (_, id) => {
-                queryClient.setQueryData(["books"], (old = []) => old.filter((b) => b.id !== id));
-                queryClient.invalidateQueries(["stats"]);
-            },
-        }
-    );
+    const deleteBookMutation = useMutation({
+        mutationFn: (id) =>
+            fetch(`${API_BASE_URL}/api/books/${id}/`, { method: "DELETE" }),
+        onSuccess: (_, id) => {
+            queryClient.setQueryData(["books"], (oldData = { results: [] }) => ({
+                ...oldData,
+                results: oldData.results.filter(b => b.id !== id),
+            }));
+            queryClient.invalidateQueries({ queryKey: ["stats"] });
+        },
+    });
 
     const isLoading = booksLoading || statsLoading;
 
@@ -198,8 +216,14 @@ export default function BooksApp() {
         return () => window.removeEventListener('resize', checkScreenSize);
     }, []);
 
-    const deleteBook = async (bookId) => {
-        setConfirmDelete({ isOpen: true, bookId });
+    useEffect(() => {
+        if (!isMobile) {
+            setSidebarOpen(false);
+        }
+    }, [isMobile]);
+
+    const deleteBook = (book) => {
+        setConfirmDelete({ isOpen: true, book });
     };
 
     const renderDashboard = () => (
@@ -242,7 +266,7 @@ export default function BooksApp() {
                 />
                 <StatCard
                     title="Recent Additions"
-                    value={books.filter(book =>
+                    value={books.results.filter(book =>
                         new Date(book.created_at) > new Date(Date.now() - 30 * 24 * 60 * 60 * 1000)
                     ).length}
                     icon={TrendingUp}
@@ -326,13 +350,13 @@ export default function BooksApp() {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center space-y-4 md:space-y-0">
                 <div>
                     <h1 className="text-3xl font-bold text-gray-900">Your Books</h1>
-                    <p className="text-gray-600">{books.length} books in your collection</p>
+                    <p className="text-gray-600">{books.results.length} books in your collection</p>
                 </div>
                 <motion.button
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     onClick={() => setIsAddModalOpen(true)}
-                    className="flex items-center space-x-2 bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    className="flex items-center space-x-2 cursor-pointer bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
                 >
                     <Plus className="w-5 h-5" />
                     <span>Add New Book</span>
@@ -344,21 +368,21 @@ export default function BooksApp() {
                 variants={containerVariants}
                 className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6"
             >
-                {books.map((book) => (
+                {books.results.map((book) => (
                     <BookCard
                         key={book.id}
                         book={book}
                         onEdit={(book) => {
-                            setEditingBook(book);       // set book to edit
-                            setIsAddModalOpen(true);    // open modal
+                            setEditingBook(book);
+                            setIsAddModalOpen(true);
                         }}
-                        onDelete={deleteBook}
+                        onDelete={() => deleteBook(book)}
                     />
                 ))}
             </motion.div>
 
 
-            {books.length === 0 && (
+            {books.results.length === 0 && (
                 <motion.div
                     variants={itemVariants}
                     className="text-center py-12"
@@ -513,10 +537,20 @@ export default function BooksApp() {
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-gray-50 to-blue-50">
-            <Navbar activeTab={activeTab} setActiveTab={setActiveTab} setSidebarOpen={setSidebarOpen} />
-            <Sidebar isOpen={sidebarOpen} setIsOpen={setSidebarOpen} activeTab={activeTab} setActiveTab={setActiveTab} />
+            <Navbar
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+                isMobile={isMobile}
+                setSidebarOpen={setSidebarOpen}
+            />
+            <Sidebar
+                isOpen={sidebarOpen}
+                setIsOpen={setSidebarOpen}
+                activeTab={activeTab}
+                setActiveTab={setActiveTab}
+            />
 
-            <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <main className="w-full px-4 sm:px-6 lg:px-8 py-4 sm:py-8 lg:max-w-7xl lg:mx-auto">
                 {renderContent()}
             </main>
 
@@ -525,11 +559,20 @@ export default function BooksApp() {
                 isOpen={isAddModalOpen}
                 onClose={() => { setIsAddModalOpen(false); setEditingBook(null); }}
                 initialData={editingBook}
-                onSubmit={(data) => {
-                    if (editingBook) {
-                        editBookMutation.mutate({ id: editingBook.id, data });
-                    } else {
-                        addBookMutation.mutate(data);
+                onSubmit={async (data) => {
+                    try {
+                        if (editingBook) {
+                            // await edit mutation
+                            await editBookMutation.mutateAsync({ id: editingBook.id, data });
+                        } else {
+                            // await add mutation
+                            await addBookMutation.mutateAsync(data);
+                        }
+                        // close modal after success
+                        setIsAddModalOpen(false);
+                        setEditingBook(null);
+                    } catch (error) {
+                        console.error("Error saving book:", error);
                     }
                 }}
                 mode={editingBook ? "edit" : "add"}
@@ -538,7 +581,17 @@ export default function BooksApp() {
             <ConfirmModal
                 isOpen={confirmDelete.isOpen}
                 onClose={() => setConfirmDelete({ isOpen: false, book: null })}
-                onConfirm={() => deleteBookMutation.mutate(confirmDelete.book.id)}
+                onConfirm={async () => {
+                    if (confirmDelete.book) {
+                        try {
+                            await deleteBookMutation.mutateAsync(confirmDelete.book.id);
+                        } catch (error) {
+                            console.error("Error deleting book:", error);
+                        }
+                    }
+                    // close modal after deletion
+                    setConfirmDelete({ isOpen: false, book: null });
+                }}
                 title="Delete Book"
                 message={`Are you sure you want to delete "${confirmDelete.book?.title}"?`}
             />
